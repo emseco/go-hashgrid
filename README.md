@@ -6,31 +6,31 @@ Extrēmus is the first public blockchain platform based on the combination of Ji
 
 ## Building And Run go-hashgrid Node
 
-1. Install golang
+install golang
 
-2. Set %GOPATH% Environment Variable 
+set %GOPATH% environment variable 
 
-3. Download go-hashgrid code to GOPATH/src
+download go-hashgrid code to GOPATH/src
 
     cd %GOPATH%/src
     git clone https://github.com/emseco/go-hashgrid.git
 
-4. Run test/test.bat
+run test/test.bat
 
-	cd test
+    cd test
     test.bat
 
-5. Run main.exe
+run main.exe
 
 	main.exe
 	
-6. The config file. 
+config file
 
     example：
-    { 
+    {
 	"addr":"127.0.0.1:33201", //local node address
 	"coinbase":[10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,33],//local node public key
 	"peers":["127.0.0.1:33201","127.0.0.1:33202","127.0.0.1:33203"],//seed nodes
 	"interMilli":500//max time(millisecond) of generate block
-	}
+    }
 	

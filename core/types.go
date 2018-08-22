@@ -217,6 +217,7 @@ type Event struct {
 type RequestArg struct {
 	TargetHash Hash
 	TargetAddr Address
+	Refered    int
 }
 
 func CopyEvent(e *Event) *Event {

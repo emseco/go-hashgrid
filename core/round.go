@@ -50,7 +50,7 @@ type Round struct {
 	nc sync.RWMutex
 
 	lostDict   map[Hash][]*Vertex
-	newComer   map[Hash]Address
+	newComer   []*RequestArg
 	bestVertex *Vertex
 	witnesses  []*Vertex
 	broadness  int
@@ -89,7 +89,7 @@ func (rdm *RoundManager) RoundLoop() {
 		select {
 		case vert = <-rdm.jp.roundTrigger:
 			// trigger when one witness comes (local or remote)
-			log.Info("RoundLoop in roundTrigger", "Addr", vert.SelfSig.Addr, "roundID", rdm.currentIdx)
+			log.Info("RoundLoop in roundTrigger", "rdm.currentIdx", rdm.currentIdx, "Addr", vert.SelfSig.Addr)
 
 			if (vert.witness == WitnessLocal && vert.RoundID.Cmp(big.NewInt(int64(rdm.currentIdx))) == 0) ||
 				(vert.witness == Witness && vert.RoundID.Cmp(big.NewInt(int64(rdm.currentIdx+1))) == 0) {
@@ -112,6 +112,7 @@ func (rdm *RoundManager) RoundLoop() {
 			if round != nil {
 				idx := vert.seqNum
 				round.witnesses[idx] = vert
+				log.Info("RoundLoop :set witness", "roundID", round.index, "seqNum", idx)
 
 				for idx = 0; idx < round.broadness; idx++ {
 					if round.witnesses[idx] == nil {
@@ -119,9 +120,9 @@ func (rdm *RoundManager) RoundLoop() {
 						break
 					}
 				}
-				if idx >= rdm.jp.superMajority {
+				if idx == round.broadness {
 					rdm.consensusTrigger <- round.index
-					log.Debug("consensus Trigger")
+					log.Debug("RoundLoop: consensus Trigger", "round", round.index)
 				}
 
 				// preElement := rdm.queue.Front().Next()
@@ -264,11 +265,12 @@ func (s AddrSlice) Less(i, j int) bool {
 //ConsensusShow display the blocks
 func (rdm *RoundManager) ConsensusShow() {
 	var addrPre []Address
+	var totalBlocks int64
 
 	for {
 		select {
-		case <-rdm.consensusTrigger:
-			log.Info("Consensus Reached:")
+		case idx := <-rdm.consensusTrigger:
+			log.Info("Consensus Reached:", "round", idx)
 			addrPre = make([]Address, 0, MaxArrayLength)
 			rdm.jp.graphLock.RLock()
 			for addr, _ := range rdm.jp.graph {
@@ -287,15 +289,18 @@ func (rdm *RoundManager) ConsensusShow() {
 					col.lock.RLock()
 					x := col.verTop
 					if x != nil && x.witness == Witness {
+						log.Info("Consensus Block", "Hash", x.SelfHash)
+						totalBlocks++
 						x = x.selfPt
 					}
 					for ; x != nil && x.witness != Witness; x = x.selfPt {
 						log.Info("Consensus Block", "Hash", x.SelfHash)
+						totalBlocks++
 					}
 					col.lock.RUnlock()
 				}
 			}
-			log.Info("Consensus ...")
+			log.Info("Consensus ...", "totalBlocks", totalBlocks)
 		}
 	}
 }
@@ -304,7 +309,7 @@ func (rdm *RoundManager) ConsensusShow() {
 func NewRound(l, idx int) *Round {
 	rd := new(Round)
 	rd.lostDict = make(map[Hash][]*Vertex)
-	rd.newComer = make(map[Hash]Address)
+	rd.newComer = make([]*RequestArg, 0, MaxArrayLength)
 	rd.broadness = l
 	rd.index = idx
 
@@ -317,41 +322,6 @@ func NewRound(l, idx int) *Round {
 	rd.witnesses = make([]*Vertex, MaxNodeCount)
 
 	return rd
-}
-
-// RandParent retrieve a parent from newComer randomly
-func (rd *Round) RandParent() (arg *RequestArg) {
-	var h Hash
-	var addr Address
-
-	arg = &RequestArg{}
-	step := 0
-
-	rd.nc.RLock()
-	mlen := len(rd.newComer)
-	if mlen == 0 {
-		rd.nc.RUnlock()
-		return nil
-	}
-	to := rand.Intn(mlen)
-
-	for h, addr = range rd.newComer {
-		if step == to {
-			arg.TargetHash = h
-			arg.TargetAddr = addr
-			break
-		}
-		step++
-	}
-	rd.nc.RUnlock()
-
-	rd.nc.Lock()
-	if len(rd.newComer) > rd.broadness {
-		delete(rd.newComer, h)
-	}
-	rd.nc.Unlock()
-
-	return arg
 }
 
 //
@@ -435,4 +405,51 @@ func (rdm *RoundManager) dfsVisit(trace []int, s *Vertex, e *Vertex, colorCluste
 		}
 	}
 	s.color[colorCluster] = BLACK
+}
+
+func (rd *Round)addComer(rqa *RequestArg) {
+	rd.nc.Lock()
+	for _, n := range rd.newComer {
+		if n.TargetHash.Compare(&rqa.TargetHash) == 0 {
+			// already in rd.newComer
+			return
+		}
+	}
+
+	rd.newComer = append(rd.newComer, rqa)
+	rd.nc.Unlock()
+
+	return
+}
+
+// RandParent retrieve a parent from newComer randomly
+func (rd *Round) RandParent(except Address) (arg *RequestArg) {
+	ret := &RequestArg{}
+
+	rd.nc.RLock()
+	mlen := len(rd.newComer)
+	if mlen == 0 {
+		rd.nc.RUnlock()
+		return nil
+	}
+	to := rand.Intn(mlen)
+
+	for i, arg := range rd.newComer {
+		if arg.TargetAddr.Compare(&except) != 0 {
+			ret = arg			
+		}
+
+		if i == to {
+			if arg.TargetAddr.Compare(&except) != 0 {
+				ret = arg
+				arg.Refered++
+				break
+			}
+		}
+	}
+	rd.nc.RUnlock()
+	if ret.TargetAddr.Compare(&Address{}) == 0 {
+		return ret		
+	}
+	return nil
 }

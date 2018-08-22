@@ -24,7 +24,6 @@ import (
 	"io"
 	"math/big"
 	"math/rand"
-	//"mixFuzzer/mixFuzzer-go/glogger"
 	"net"
 	"sync"
 )
@@ -74,7 +73,7 @@ func (c *conn) ReadMsg() (msg Msg, err error) {
 		return msg, err
 	}
 
-	//log.Debug("recv raw", "head", headbuf)
+	log.Debug("recv raw", "head", headbuf)
 	msg.Code = headbuf[0]
 	msg.Type = readInt32(headbuf[1:])
 	msg.Size = readInt32(headbuf[5:])
@@ -85,7 +84,7 @@ func (c *conn) ReadMsg() (msg Msg, err error) {
 	if _, err := io.ReadFull(c.fd, framebuf); err != nil {
 		return msg, err
 	}
-	//log.Debug("recv raw", "data", framebuf)
+	log.Debug("recv raw", "data", framebuf)
 
 	content := bytes.NewReader(framebuf[:msg.Size])
 	msg.Payload = content
@@ -100,19 +99,19 @@ func (c *conn) WriteMsg(msg Msg) error {
 	log.Debug("Send Msg to peer", "code", msg.Code, "type", msg.Type, "id", c.id)
 
 	// write header
-	headbuf := make([]byte, 9)
-	headbuf[0] = msg.Code
-	putInt32(msg.Type, headbuf[1:])
-	putInt32(msg.Size, headbuf[5:])
-	//log.Debug("send raw", "head", headbuf)
-	c.fd.Write(headbuf)
+	buff := make([]byte, 9+msg.Size)
+	buff[0] = msg.Code
+	putInt32(msg.Type, buff[1:])
+	putInt32(msg.Size, buff[5:])
 
 	// write payload
-	framebuf := make([]byte, msg.Size)
-	msg.Payload.Read(framebuf)
-	//log.Debug("send raw", "data", framebuf)
-	c.fd.Write(framebuf)
-	return nil
+	n, err := msg.Payload.Read(buff[9:])
+	if n != int(msg.Size) {
+		return errors.New("WriteMsg error: payload size not match")
+	}
+	log.Debug("send raw", "data", buff)
+	_, err = c.fd.Write(buff)
+	return err
 }
 
 func readInt32(b []byte) uint32 {
@@ -408,8 +407,7 @@ func (srv *Server) BroadcastEvent(e *core.Event, eventType uint32) error {
 	for _, p := range peers {
 		err := Send(p.rw, eventMsg, eventType, *e)
 		if err != nil {
-			//glogger.Error(err.Error())
-			log.Debug("BroadcastEvent Send error")
+			log.Error("BroadcastEvent Send error", "err", err)
 		}
 	}
 	return nil

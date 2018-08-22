@@ -85,7 +85,7 @@ func (nd *Node) EventHandle() {
 		case et = <-witnessR:
 			// receive the remote witness
 			ty = core.Witness
-			log.Debug("EventHandle, witnessR")
+			log.Info("EventHandle, witnessR", "received", et.RoundID, "self", jp.CurrentRound())
 			if et.RoundID.Cmp(big.NewInt(int64(jp.CurrentRound()+1))) == 0 {
 				roundComming = true
 			}
@@ -98,12 +98,13 @@ func (nd *Node) EventHandle() {
 				etTy = core.Normal
 			} else {
 				etTy = core.Witness
+				log.Info("EventHandle :Send witness", "round", et.RoundID)
 			}
 			log.Debug("onlyTime.C", "etTy", etTy)
 			go nd.server.BroadcastEvent(et, etTy)
 
 			roundComming = false
-			onlyTime = time.NewTimer(time.Millisecond * core.EventDuration)
+			onlyTime = time.NewTimer(time.Millisecond * time.Duration(myInterval))
 
 		case <-overFlow.C:
 			// check the trans unhandled and Hash received

@@ -232,12 +232,10 @@ func (jp *JPGraph) AddEvent(e *Event, ty int) error {
 			log.Info("AddEvent: round Witness", "seq", i)
 		}
 
-		round.nc.Lock()
-		_, ok = round.newComer[vert.SelfHash]
-		if !ok {
-			round.newComer[vert.SelfHash] = vert.SelfSig.Addr
-		}
-		round.nc.Unlock()
+		rqa := &RequestArg{}
+		rqa.TargetAddr = vert.SelfSig.Addr
+		rqa.TargetHash = vert.SelfHash
+		round.addComer(rqa)
 
 		round.ld.Lock()
 		_, ok = round.lostDict[vert.SelfHash]
@@ -347,7 +345,7 @@ func (jp *JPGraph) ComposeEvent() *Event {
 			et.OtherPartA = round.bestVertex.SelfSig.Addr
 		} else {
 			// select a rand one from round.newComer
-			arg := round.RandParent()
+			arg := round.RandParent(et.SelfSig.Addr)
 			if arg != nil {
 				et.OtherPartH = arg.TargetHash
 				et.OtherPartA = arg.TargetAddr
